@@ -1,0 +1,277 @@
+#include <LiquidCrystal.h>
+#define   PUL   5
+#define   DIR   6
+#define   ENA   7
+#define   SWT   4
+#define   POT   A0
+#define    S_TIME    200
+#define    SAMPLE    25
+LiquidCrystal lcd(8, 9, 10, 11, 12, 13);
+const int respPin = 3;
+const int pulsePin = 2;
+const int tempPin = A2;
+const int buzPin = 17; // A3
+unsigned int x, c;
+int sec = 0, pcnt = 0, pulse = 0, rcnt = 0, resp = 0, temp = 0;
+char str[32], p_f, r_f, t_f, t_f1, sw_f, sw_v, sw_s, k, n;
+long ms;
+int i, j, pos;
+unsigned int adc_v, adc_t;
+unsigned char doa;
+unsigned int q;
+void setup()
+{
+  Serial.begin(9600);
+  pinMode(SWT, INPUT);
+  pinMode(respPin, INPUT);
+  pinMode(pulsePin, INPUT);
+  pinMode(buzPin, OUTPUT);
+  pinMode(DIR, OUTPUT);
+  pinMode(PUL, OUTPUT);
+  pinMode(ENA, OUTPUT);
+  digitalWrite(DIR, HIGH);
+  digitalWrite(PUL, HIGH);
+  digitalWrite(ENA, HIGH);
+  lcd.begin(16, 2);
+  lcd.setCursor(0, 0);
+  lcd.print("Patient Monitor");
+  lcd.setCursor(0, 1);
+  lcd.print("Start press switch");
+
+  p_f = 0; r_f = 0; t_f = 0;  t_f1 = ; x = 0; sw_f = 0;  sw_v = 0;  sw_s = 0; doa = 3;
+  n = 0;
+ digitalWrite(buzPin, HIGH);
+  delay(2000); }
+void Buzzer (long dly)
+{
+  digitalWrite(buzPin, LOW);
+  delay(dly);
+  digitalWrite(buzPin, HIGH);
+  delay(dly);
+}
+void loop()
+{
+  while (sw_s == 0)
+  {
+    sw_v = digitalRead(SWT);
+    if (sw_f == 0 && sw_v == 1 && sw_s == 0)
+    {
+      sw_f = 1;
+    }
+    else if (sw_f == 1 && sw_v == 0 && sw_s == 0)
+    {
+      sw_f = 2;
+    }
+    else if (sw_f == 2 && sw_v == 1 && sw_s == 0)
+    {
+      sw_f = 3;
+      sw_s = 1;
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("SEC PUL RES TEM");
+    }
+  }
+  adc_t = 0;
+
+  for (k = 0; k < SAMPLE; k++)
+  {
+    adc_t = adc_t + analogRead(POT);
+
+    delay(2);
+  }
+  adc_v = adc_t / SAMPLE;
+  adc_v = map(adc_v, 0, 1023, 1, 120);
+  Serial.print("weight is ");
+  Serial.println(adc_v);
+  lcd.setCursor(0, 0);
+  lcd.print("                ");
+  lcd.setCursor(0, 0);
+  lcd.print("Weight: ");
+  lcd.print(adc_v);
+  if (sw_s == 1)
+  {
+    Check_Pulse();
+    Check_Respiration();
+    Check_Temperature();
+  if (millis() - ms > 1000)
+    {
+      ms = millis();
+      lcd.setCursor(0, 0);
+      lcd.print("SEC PUL RES TEM");
+      lcd.setCursor(0, 1);
+      sprintf(str, "%3u %3u %3u %3u ", sec, pcnt, rcnt, temp);
+      lcd.print(str);
+      if (++sec >= 60)
+      {
+        if (temp < 99.0)
+        {
+          lcd.setCursor(12, 1);
+          lcd.print("NRM");  t_f = 0;
+        }
+        else if (temp >= 99.0)
+        {
+          lcd.setCursor(12, 1);
+          lcd.print("FEV");
+          t_f = 1;
+        }
+        if (pcnt < 60)
+        {
+          lcd.setCursor(4, 1);
+          lcd.print("LOW");
+          p_f = 1;
+        }
+        else if (pcnt > 60 && pcnt < 100)
+        {
+          lcd.setCursor(4, 1);
+          lcd.print("NRM");
+          p_f = 0;
+        }
+        else if (pcnt > 100)
+        {
+          lcd.setCursor(4, 1);
+          lcd.print("HIG");
+          p_f = 1;
+        } 
+        if (resp < 12)
+        {
+          lcd.setCursor(8, 1);
+          lcd.print("Hyx");
+          r_f = 1;
+        }
+        else if (rcnt > 12 && rcnt < 18)
+        {
+          lcd.setCursor(8, 1);
+          lcd.print("NRM");
+          r_f = 0;
+        }
+        else if (resp > 18)
+        {
+          lcd.setCursor(8, 1);
+          lcd.print("HIG");
+          r_f = 1;
+        }
+
+        pcnt = pcnt + 1;
+
+        q = (3 * adc_v) * (10 * pcnt);
+
+        Serial.println(q);
+
+        delay(5000);
+
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Anthesia Requ:");
+        lcd.setCursor(0, 1);
+        lcd.print(q / 1000);
+        lcd.print('.');
+        lcd.print((q % 1000) / 100);
+        lcd.print(" ml");
+        sec = pcnt = rcnt = 0;
+        sw_f = 0;
+        sw_s = 0;
+      }
+    }
+
+    if (p_f == 1 || r_f == 1 || t_f == 1)
+    {
+      Buzzer(3000);
+      p_f = r_f = t_f = n = 0;
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Patient Monitor");
+      lcd.setCursor(0, 1);
+      lcd.print("Start press switch");
+    }
+  }
+}
+void Check_Pulse()
+{
+  static long flag = 0, t = millis();
+
+  if (!digitalRead(pulsePin))
+  {
+    if ((flag != 1) && (millis() - t > 500))
+    {
+      flag = 1;
+      t = millis();
+      pcnt++;
+    }
+  }
+  else
+  {
+    flag = 0;
+  }
+}
+
+void Check_Respiration()
+{
+  static long flag = 0, t = millis();
+
+  if (!digitalRead(respPin))
+  {
+    if ((flag != 1) && (millis() - t > 500))
+    {
+      flag = 1;
+      t = millis();
+      rcnt++;
+    }
+  }
+  else
+  {
+    flag = 0;
+  }
+}
+
+void Check_Temperature()
+{
+  long tt = 0;
+
+  for (int i = 0; i < 20; i++)
+  {
+    tt += (long)analogRead(tempPin);
+  }
+
+  tt /= 20;
+
+  temp = (((float)tt / 2.048) * 1.8) + 32.0;
+}
+
+
+void stepper_motor_fw()
+{
+  unsigned int qt;
+
+  digitalWrite(DIR, LOW);
+
+  for (qt = 0; qt < (q / 100); qt++)
+  {
+    digitalWrite(PUL, LOW);
+
+    delay(5);
+
+    digitalWrite(PUL, HIGH);
+
+    delay(5);
+  }
+
+  t_f1 = 1;
+}
+
+void stepper_motor_bw()
+{
+  unsigned int qt;
+
+  digitalWrite(DIR, HIGH);
+
+  for (qt = 0; qt < (q / 100); qt++)
+  {
+    digitalWrite(PUL, LOW);
+
+    delay(5);
+
+    digitalWrite(PUL, HIGH);
+
+    delay(5);
+  }
+}
